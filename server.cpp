@@ -8,6 +8,12 @@
 #include <mutex>
 
 using namespace std;
+typedef struct
+{
+	int sock;
+	struct sockaddr address;
+	int addr_len;
+} connection_t;
 
 
 int nsocket;
@@ -20,17 +26,21 @@ char buffer[100] = {0};
 queue<int> Q_received;
 queue<int> Q_Processed;
 
-void Recv_data();
+void Recv_data(int*ptr);
 
 void Process_data();
-void Send_data();
-
+void Send_data(int*ptr);
+void handle_connection(void* ptr);
 mutex m;
 
 int main()
 {             // 0 means success
 WSADATA ws;
-
+thread th1;
+thread th2;
+thread th3;
+int* ptr;
+int sock=-1;
 
     /* INITIALZING THE DLL FILE  */
 
@@ -46,9 +56,9 @@ WSADATA ws;
 
 
     /* OPENING A SOCKET */
-     nsocket = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+     sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
 
-    if (nsocket <0)
+    if (sock <0)
     {
         cout << "the socket is not opened\n";
     }
@@ -66,7 +76,7 @@ WSADATA ws;
     adr.sin_port= htons(55555);
     adr.sin_addr.s_addr = INADDR_ANY;
 
-    if ( bind(nsocket, (struct sockaddr*) &adr  , sizeof(adr) ) < 0 )
+    if ( bind(sock, (struct sockaddr*) &adr  , sizeof(adr) ) < 0 )
     {
         cout << "bind failed\n";
     }
@@ -79,7 +89,7 @@ WSADATA ws;
 
 
     /* Listening to any client socket */
-  if ( (listen(nsocket,10 )) < 0 )
+  if ( (listen(sock,10 )) < 0 )
     {
         cout<< "unable to listen ....\n ";
     }
@@ -90,74 +100,68 @@ WSADATA ws;
     }
 
 
-    /* accept the request by creating a new socket*/
-    accepted_socket = accept(nsocket,NULL,NULL);
-
-    if (accepted_socket<0)
-    {
-        cout << "accept failed\n";
-    }
-
-    else
-    {
-        cout << "accepted\n";
-
-    }
-
-
-
-
 
 
 while(1)
 {
+     ptr = new int[1];
+     *ptr = accept(sock,NULL,NULL);
 
+    if ( *ptr <=0 )
+    {
+        delete[] ptr;
+    }
 
-thread th1(Recv_data);
-thread th2(Process_data);
-thread th3(Send_data);
+    else
 
-if(th1.joinable())
-th1.detach();
+    {
+        cout<< "accepted, new socket=" << *ptr<<"\n";
+     th1=thread( Recv_data  , ptr);
+    th2=thread(Process_data);
+    th3=thread(Send_data,ptr);
 
-if(th2.joinable())
-th2.detach();
-
-if(th3.joinable())
-th3.detach();
+     th1.detach();
+     th2.detach();
+     th3.detach();
+    }
 
 }
 
+
 }
 
-void Recv_data()
+
+void Recv_data(int*ptr)
 {
     m.lock();
-    recv(accepted_socket,buffer,sizeof(buffer),0);
-    Q_received.push( atoi(buffer) );
-    m.unlock();
+     char buffer[100];
+    int length = recv(*ptr,buffer,sizeof(buffer),0);       // THIS FUNCTION WAITS THE CLIENT TO SEND! THUS, THREAD WON'T 
+                                                           // QUIT UNTIL SOMETHING IS RECEIVED, PTR ADRESS IS RESERVED 
+     if (  length >0 )                                     // FOR THIS SPECIFIC CLIENT
+    {
 
+     cout << "RECEIVED: " << buffer << "\n";
+     Q_received.push( atoi(buffer) );
+    }
+    m.unlock();
+    cout<<"RECV_RETURNED";
 }
 
 void Process_data()
 {
-
-        m.lock();
-        Q_Processed.push(Q_received.front() + 4 );
-        Q_received.pop();
-        m.unlock();
-
-
+    m.lock();
+     Q_Processed.push(Q_received.front() + 4 );
+     Q_received.pop();
+     m.unlock();
 }
 
-void Send_data()
+void Send_data(int*ptr)
 {
-
-
-        m.lock();
-        itoa(Q_Processed.front(),buffer,10);
-        Q_Processed.pop();
-        send(accepted_socket,buffer,sizeof(buffer),0);
-        m.unlock();
-
+    m.lock();
+    itoa(Q_Processed.front(),buffer,10);
+      Q_Processed.pop();
+      cout << "sending on socket" << *ptr;
+      send(*ptr,buffer,sizeof(buffer),0);
+      m.unlock();
 }
+
