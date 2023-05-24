@@ -1,0 +1,5 @@
+# depslib dependency file v1.0
+1683644082 source:c:\users\hos\documents\sockets\main.cpp
+	<iostream>
+	<winsock.h>
+
